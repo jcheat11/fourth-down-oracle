@@ -144,12 +144,6 @@ def render_result(current):
         st.markdown(ui.status_line("<b>Inputs changed.</b> This call was for the previous situation. "
                                    "Make the Call again for the new one."), unsafe_allow_html=True)
         return
-    if check["passed"]:
-        st.markdown(ui.status_line("<b>Format check:</b> passed (one verdict word, one sentence)."), unsafe_allow_html=True)
-    else:
-        problems = "; ".join(dict.fromkeys(PLAIN[c] for c, _ in check["violations"]))
-        st.markdown(ui.status_line(f"<b>Format check:</b> the reply broke the contract ({problems}). "
-                                   "The raw reply is under the hood."), unsafe_allow_html=True)
     if row["fallback_reason"]:
         st.markdown(ui.status_line("<b>Backup model:</b> the main model was busy, so the backup answered."),
                     unsafe_allow_html=True)
@@ -184,9 +178,21 @@ with right:
 # ---------------- Secondary information ----------------
 st.divider()
 last = st.session_state.last
+
+# Format check: its own visible section, so the validator result (B3) is on screen
+# during the demo without crowding the answer itself.
+st.markdown(ui.section("Format check"), unsafe_allow_html=True)
+if not last:
+    st.caption("After each call, the reply is checked for one verdict word, one sentence, and no hedging.")
+elif last["row"]["error"]:
+    st.caption("Nothing to check: the last request didn't get a reply.")
+else:
+    stale_label = ui.summary_text(last["situation"]) if last["situation"] != situation else None
+    st.markdown(ui.format_check(last["check"]["violations"], PLAIN, stale_label), unsafe_allow_html=True)
+
 with st.expander("Under the Hood"):
     if not last:
-        st.caption("Make a call to see the rule's reasoning, the raw Gemini reply, and the format check.")
+        st.caption("Make a call to see the rule's reasoning and the raw Gemini reply.")
     else:
         row, check = last["row"], last["check"]
         st.markdown(f"**Rule's call:** {row['rule_verdict']} ({row['rule_reason']}). "
@@ -199,9 +205,6 @@ with st.expander("Under the Hood"):
         else:
             st.markdown("**Raw reply** (exactly as returned, never edited)")
             st.code(row["raw_output"] or "(empty)", language=None, wrap_lines=True)
-            st.markdown("**Format check:** " + ("PASS" if check["passed"] else "FAIL"))
-            for code, detail in check["violations"]:
-                st.markdown(f"- **{code}** {detail}")
         st.markdown(f"**Model:** `{row['model']}` · **Prompt:** {row['prompt_version']}"
                     + (f" · **Backup used:** {row['fallback_reason']}" if row["fallback_reason"] else ""))
 

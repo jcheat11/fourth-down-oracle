@@ -107,6 +107,15 @@ details > summary { display: flex; align-items: center; }
 .gng-result .gng-tag { font-size: 0.95rem; font-weight: 700; color: #C9CDD2; text-transform: uppercase; letter-spacing: 0.08em; }
 .gng-result .gng-why { font-size: 1.1rem; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
 .gng-result.stale { opacity: 0.55; border-style: dashed; border-left-style: solid; }
+/* Format check panel (validator result, B3). PASS/BROKEN is spelled out, not color-only. */
+.gng-check { border: 1px solid var(--gng-line); background: var(--gng-panel); border-radius: 6px; padding: 0.8rem 1rem; margin: 0.2rem 0 1rem; }
+.gng-check .gng-badge { display: inline-block; font-weight: 900; letter-spacing: 0.08em; padding: 0.15rem 0.55rem; border-radius: 4px; margin-right: 0.5rem; }
+.gng-check.ok .gng-badge { background: #1E5E3A; color: #CFF5DD; }
+.gng-check.bad .gng-badge { background: #6B2A24; color: #FFD9D4; }
+.gng-check ul { margin: 0.5rem 0 0; padding-left: 1.2rem; }
+.gng-check li { margin: 0.2rem 0; overflow-wrap: anywhere; }
+.gng-check .gng-code { font-weight: 800; color: var(--gng-amber); }
+.gng-check .gng-sub { color: #9AA1AA; font-size: 0.85rem; margin-top: 0.4rem; }
 .gng-status { font-size: 0.9rem; color: #C9CDD2; margin: 0.5rem 0 0; }
 .gng-status b { color: #F3F4F1; }
 </style>
@@ -231,3 +240,20 @@ def result_card(verdict, justification, stale_summary=None):
 
 def status_line(text):
     return f'<p class="gng-status">{text}</p>'
+
+
+def format_check(violations, plain, stale_summary=None):
+    """Validator panel: PASS or BROKEN, then each violation in plain words with its code and detail."""
+    ok = not violations
+    head = ("One verdict word, one sentence, no hedging." if ok
+            else f"{len(violations)} problem{'s' if len(violations) != 1 else ''} with the reply.")
+    items = "".join(
+        f'<li><span class="gng-code">{c}</span> {html.escape(plain[c])} <span class="gng-sub">({html.escape(d)})</span></li>'
+        for c, d in violations)
+    stale = (f'<div class="gng-sub">For the previous situation: {html.escape(stale_summary)}</div>'
+             if stale_summary else "")
+    return (f'<div class="gng-check {"ok" if ok else "bad"}" role="status">'
+            f'<span class="gng-badge">{"PASS" if ok else "BROKEN"}</span>{head}'
+            f'{"<ul>" + items + "</ul>" if items else ""}'
+            '<div class="gng-sub">The raw reply is under the hood.</div>'
+            f"{stale}</div>")

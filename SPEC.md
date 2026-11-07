@@ -73,7 +73,7 @@ Decided by Josh on 2026-11-07 (brief: "Go / No Go", broadcast-booth look, mobile
 
 - Title "Go / No Go", with "Fourth Down Oracle" kept as the label above it. Dark charcoal theme with turf green and amber (`.streamlit/config.toml`).
 - Inputs redraw the summary bar and SVG field live; Gemini is only called on "Make the Call". Inputs and button are disabled while a call is in flight.
-- The result card shows the **rule's** verdict word (B2) and the LLM's justification **as parsed, never trimmed** (B3). If the reply breaks the contract, a format-check line outside the card says so; the raw reply is in "Under the Hood".
+- The result card shows the **rule's** verdict word (B2) and the LLM's justification **as parsed, never trimmed** (B3). A separate, always-visible "Format check" section below the result shows PASS or BROKEN with each violation; the raw reply is in "Under the Hood".
 - On an API failure, no card is shown: a verdict without its sentence would break B1. The plain-language message is outside the answer.
 - Changing inputs after a call marks the old card "Previous situation" and dims it.
 - Score and time controls stay, because the D2 override uses them.
