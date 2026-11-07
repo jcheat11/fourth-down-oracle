@@ -1,0 +1,16 @@
+# T3: API key lives here locally. Never commit.
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Local run-log exports
+*.csv
