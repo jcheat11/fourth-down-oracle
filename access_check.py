@@ -54,3 +54,21 @@ if choice and st.button("Send test call"):
         st.code(resp.text)
     except Exception as e:
         st.error(f"Call failed: {type(e).__name__}: {e}")
+
+# Sweep: one call per text Flash model, so we can see which ones actually answer
+# right now. The listing alone isn't proof (404 retired models, 503 overloaded ones).
+# -tts models produce audio, so they're skipped.
+st.divider()
+text_flash = [m for m in flash if not m.endswith("-tts")]
+if text_flash and st.button(f"Test all {len(text_flash)} text Flash models"):
+    rows = []
+    progress = st.progress(0.0)
+    for i, m in enumerate(text_flash):
+        try:
+            resp = client.models.generate_content(model=m, contents=prompt)
+            rows.append({"model": m, "result": "OK", "reply": (resp.text or "").strip()})
+        except Exception as e:
+            code = getattr(e, "code", "")  # 404 / 429 / 503 from the SDK's error object
+            rows.append({"model": m, "result": f"FAIL {code}", "reply": str(e)[:120]})
+        progress.progress((i + 1) / len(text_flash))
+    st.dataframe(rows, use_container_width=True)

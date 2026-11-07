@@ -29,3 +29,15 @@ Entries are tagged with constraint IDs from `CLAUDE.md`. Format:
 - What happened: Accepted the proposed spec as written (see `SPEC.md`). Key choices: the LLM restates the rule's verdict instead of having it prepended, so a changed call is detectable (V2); V6 contradiction detection is a keyword heuristic rather than an LLM judge, to save free-tier quota (T5); verdicts are strictly Go/Punt/Kick.
 - What I expected: n/a.
 - What I changed: n/a. Known weak spots going in: V3 sentence counting will misfire on decimals and abbreviations, and V6 keywords will miss paraphrased contradictions.
+
+### 2026-11-07 — The model list includes models the key can't call
+- Constraint IDs: T4, T2
+- What happened: On the deployed access check, the key listed 47 generateContent models and the Secrets setup worked. The first test call went to `gemini-2.5-flash`, which was in the list, and failed with 404 NOT_FOUND: "no longer available to new users", with a suggestion to use `gemini-3.8-flash`.
+- What I expected: If the API lists a model as supporting generateContent, the key can call it.
+- What I changed: The listing isn't proof of access. A model is only pinned after a test call to it succeeds. Also avoiding the `-latest` aliases (`gemini-flash-latest`), because they can silently change which model runs, which defeats T4.
+
+### 2026-11-07 — The recommended model returned 503 "high demand"
+- Constraint IDs: T5, T4
+- What happened: `gemini-3.8-flash`, the model Google's own 404 message recommended, returned 503 UNAVAILABLE: "currently experiencing high demand... try again later."
+- What I expected: The rate-limit risk in T5 was a 429 from our shared free-tier quota. This is a different failure: Google's servers are busy, regardless of our usage.
+- What I changed: The app's error handling has to cover 503 as well as 429. Open question for Phase 3: on a 503, retry the same model, or fall back to a second pinned model? A fallback must be logged per run, so the run log shows which model actually answered.
