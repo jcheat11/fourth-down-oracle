@@ -1,0 +1,88 @@
+"""Checks every LLM reply against the output contract (B1, B3, D3, D4).
+
+It reports violations and never rewrites the reply. Codes match SPEC.md:
+  V1 first word isn't Go/Punt/Kick     V4 hedge words
+  V2 verdict differs from the rule      V5 text before the verdict
+  V3 not exactly one sentence           V6 justification argues for another option
+"""
+
+import re
+
+VERDICTS = {"go": "Go", "punt": "Punt", "kick": "Kick"}
+HEDGE_RE = re.compile(r"\b(probably|maybe|might|perhaps|likely|arguably|depends)\b", re.IGNORECASE)
+
+# V6 keyword heuristic. Phrases that argue FOR each option; a justification that
+# uses another option's phrases counts as contradicting the rule's call.
+# Patterns match word starts, so "punt" also catches "punting" and "convert" catches "converting".
+ARGUES_FOR = {
+    "Go": ["go for it", "convert", "keep the offense on the field"],
+    "Kick": ["field goal", "kick it", "three points"],
+    "Punt": ["punt", "pin them", "flip the field"],
+}
+
+WORD_RE = re.compile(r"[A-Za-z]+")
+# A sentence ends at . ! or ? followed by whitespace or end of text,
+# so decimals like "3.5" don't count as sentence breaks.
+SENTENCE_END_RE = re.compile(r"[.!?]+(?=\s|$)")
+
+
+def count_sentences(text):
+    parts = SENTENCE_END_RE.split(text.strip())
+    return sum(1 for p in parts if p.strip())
+
+
+def validate(raw, rule_verdict):
+    """Return dict: parsed_verdict, justification, violations [(code, detail)], passed."""
+    text = (raw or "").strip()
+    words = list(WORD_RE.finditer(text))
+    violations = []
+    verdict, rest = None, text
+
+    first = words[0] if words else None
+    starts_at_zero = first is not None and text[: first.start()].strip() == ""
+
+    if first and starts_at_zero and first.group().lower() in VERDICTS:
+        verdict = VERDICTS[first.group().lower()]
+        rest = text[first.end():]
+    else:
+        violations.append(("V1", f"first word was '{first.group() if first else '(empty)'}'"))
+        # Treat the bad first word as the would-be verdict, so it isn't counted as a sentence.
+        rest = text[first.end():] if first else ""
+        # Look a few words in for a verdict, to tell a preamble ("Verdict: Go.")
+        # apart from a missing or invented verdict ("Fake.").
+        for w in words[1:6]:
+            if w.group().lower() in VERDICTS:
+                verdict = VERDICTS[w.group().lower()]
+                violations.append(("V5", f"preamble before verdict: '{text[: w.start()].strip()}'"))
+                rest = text[w.end():]
+                break
+
+    # Punctuation right after the verdict word is normalization, not a violation (D3).
+    justification = rest.lstrip(" \t\n.,:;!-—–")
+
+    if verdict and verdict != rule_verdict:
+        violations.append(("V2", f"said {verdict}, rule said {rule_verdict}"))
+
+    n = count_sentences(justification)
+    if n != 1:
+        violations.append(("V3", f"{n} sentences"))
+
+    hedges = sorted({h.lower() for h in HEDGE_RE.findall(text)})
+    if hedges:
+        violations.append(("V4", "hedge words: " + ", ".join(hedges)))
+
+    # V6 is judged against the rule's call, since that's what the LLM was told to justify (B2).
+    lower = justification.lower()
+    for option, phrases in ARGUES_FOR.items():
+        if option == rule_verdict:
+            continue
+        for p in phrases:
+            if re.search(r"\b" + re.escape(p), lower):
+                violations.append(("V6", f"rule said {rule_verdict}, text says '{p}' ({option})"))
+
+    return {
+        "parsed_verdict": verdict or "",
+        "justification": justification,
+        "violations": violations,
+        "passed": not violations,
+    }

@@ -45,7 +45,7 @@ It's crude on purpose. The rule's job is to give the LLM a call it might disagre
 - **Allowed verdict words:** Go, Punt, Kick.
 - **Shape:** `<Verdict> <one sentence>`. The LLM is told the rule's verdict and must restate it as the first word, so the validator can detect the LLM changing the call.
 - **Normalization (not a violation):** case, and punctuation right after the verdict word (`Go.`, `go`, `GO:`, `Go —` all parse as `Go`). Leading/trailing whitespace is stripped.
-- **One sentence:** after the verdict word, the justification contains exactly one sentence-ending `.`, `!`, or `?`. The terminator may be missing at the very end, which counts as one sentence. Decimals and abbreviations ("3.5", "vs.") may trip this; those are logged as validator false positives, not tuned away.
+- **One sentence:** after the verdict word, the justification contains exactly one sentence-ending `.`, `!`, or `?`. The terminator may be missing at the very end, which counts as one sentence. A terminator only counts when followed by whitespace or the end, so decimals ("3.5") don't trip it; abbreviations ("vs. the") still do, and those are logged as validator false positives, not tuned away.
 - **The raw output is always stored**, alongside the parsed verdict and justification (B3).
 
 ## D4 — Violations
@@ -59,7 +59,7 @@ It's crude on purpose. The rule's job is to give the LLM a call it might disagre
 | V5 | Preamble | Any text before the verdict word (e.g., "Verdict:", "The Oracle says") |
 | V6 | Justification argues for another option | Keyword heuristic: verdict Punt/Kick but text says "go for it" / "convert" / "keep the offense on the field"; verdict Go/Punt but text says "field goal" / "kick it" / "three points"; verdict Go/Kick but text says "punt" / "pin them" / "flip the field" |
 
-A run passes only with zero violations. Several violations can fire on one run; all are logged.
+A run passes only with zero violations. Several violations can fire on one run; all are logged. A preamble ("Verdict: Go.") fires both V1 and V5, since the first word is wrong and there is text before the verdict. V6 is judged against the rule's call, because that is what the LLM was told to justify.
 
 V6 is a keyword heuristic, not an LLM judge. A second judge call would double free-tier usage (T5). Its false positives and misses are expected and are material for the reflection log.
 

@@ -71,11 +71,11 @@ if text_flash and st.button(f"Test all {len(text_flash)} text Flash models"):
     rows = []
     table = st.empty()  # redrawn after each model so results appear as they land
     for m in text_flash:
-        table.dataframe(rows + [{"model": m, "result": "testing...", "reply": ""}], use_container_width=True)
+        table.dataframe(rows + [{"model": m, "result": "testing...", "reply": ""}], width="stretch")
         try:
             resp = fast_client.models.generate_content(model=m, contents=prompt)
             rows.append({"model": m, "result": "OK", "reply": (resp.text or "").strip()})
         except Exception as e:
             code = getattr(e, "code", "") or type(e).__name__  # 404/429/503, or a timeout
             rows.append({"model": m, "result": f"FAIL {code}", "reply": str(e)[:120]})
-        table.dataframe(rows, use_container_width=True)
+        table.dataframe(rows, width="stretch")

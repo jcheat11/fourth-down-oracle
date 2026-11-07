@@ -53,3 +53,9 @@ Entries are tagged with constraint IDs from `CLAUDE.md`. Format:
 - What happened: Chose `gemini-3.5-flash` as the primary and `gemini-3.5-flash-lite` as the backup, out of the six models that passed the sweep.
 - What I expected: To pin a single model. The 503/504 results on the newest models made a single point of failure look risky for a live demo where all viewers share one quota.
 - What I changed: Added a backup, logged per run. Tradeoff accepted: B1 compliance may differ between the two models (3.5-flash-lite already showed a "Go because..." format variation), so validator results should be read per model.
+
+### 2026-11-07 — Phase 3 core built; validator choices made while coding
+- Constraint IDs: B1–B3, D3, D4, T5
+- What happened: Built app.py (form, rule, Gemini call with backup, validator, run log with CSV download). Writing the validator forced three choices the spec didn't settle: (1) a preamble like "Verdict: Go." fires both V1 and V5; (2) V6 is checked against the rule's call, not the LLM's word; (3) a sentence break must be followed by whitespace, so "3.5" no longer counts as two sentences, which is better than the spec expected, though "vs." still does. An offline test also caught a validator bug: for "Fake. Catch them sleeping." it counted "Fake." as a sentence and wrongly added V3.
+- What I expected: The spec's D4 table would translate straight into code.
+- What I changed: Fixed the bug, updated SPEC.md to match the code, and kept the known V6 false positive ("Go. A punt from the 40 gains almost nothing.") as a test that documents the miss rather than hiding it.
