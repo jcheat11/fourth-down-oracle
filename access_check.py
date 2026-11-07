@@ -59,16 +59,23 @@ if choice and st.button("Send test call"):
 # right now. The listing alone isn't proof (404 retired models, 503 overloaded ones).
 # -tts models produce audio, so they're skipped.
 st.divider()
-text_flash = [m for m in flash if not m.endswith("-tts")]
+# -latest aliases are skipped too: we won't pin them (T4), so no point testing.
+text_flash = [m for m in flash if not m.endswith("-tts") and not m.endswith("-latest")]
 if text_flash and st.button(f"Test all {len(text_flash)} text Flash models"):
+    # Separate client with a 20s cap per call. Without it, an overloaded model can
+    # hang the whole sweep with no feedback (which is what happened the first time).
+    fast_client = genai.Client(
+        api_key=st.secrets["GEMINI_API_KEY"],
+        http_options=genai.types.HttpOptions(timeout=20_000),
+    )
     rows = []
-    progress = st.progress(0.0)
-    for i, m in enumerate(text_flash):
+    table = st.empty()  # redrawn after each model so results appear as they land
+    for m in text_flash:
+        table.dataframe(rows + [{"model": m, "result": "testing...", "reply": ""}], use_container_width=True)
         try:
-            resp = client.models.generate_content(model=m, contents=prompt)
+            resp = fast_client.models.generate_content(model=m, contents=prompt)
             rows.append({"model": m, "result": "OK", "reply": (resp.text or "").strip()})
         except Exception as e:
-            code = getattr(e, "code", "")  # 404 / 429 / 503 from the SDK's error object
+            code = getattr(e, "code", "") or type(e).__name__  # 404/429/503, or a timeout
             rows.append({"model": m, "result": f"FAIL {code}", "reply": str(e)[:120]})
-        progress.progress((i + 1) / len(text_flash))
-    st.dataframe(rows, use_container_width=True)
+        table.dataframe(rows, use_container_width=True)
