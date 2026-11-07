@@ -1,0 +1,13 @@
+# Visual theme (D6). Committed on purpose: this is styling, not a secret.
+# Theme colors are Streamlit's stable way to restyle every widget at once,
+# so app CSS only has to handle the custom pieces (field, verdict card).
+[theme]
+base = "dark"
+primaryColor = "#F2B233"            # amber: primary button, focus rings, selected radio
+backgroundColor = "#14171B"         # charcoal
+secondaryBackgroundColor = "#1F242B"
+textColor = "#F3F4F1"
+baseRadius = "small"
+
+[client]
+toolbarMode = "viewer"              # hide developer menu items for visitors

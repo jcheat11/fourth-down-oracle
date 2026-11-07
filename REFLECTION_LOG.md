@@ -59,3 +59,15 @@ Entries are tagged with constraint IDs from `CLAUDE.md`. Format:
 - What happened: Built app.py (form, rule, Gemini call with backup, validator, run log with CSV download). Writing the validator forced three choices the spec didn't settle: (1) a preamble like "Verdict: Go." fires both V1 and V5; (2) V6 is checked against the rule's call, not the LLM's word; (3) a sentence break must be followed by whitespace, so "3.5" no longer counts as two sentences, which is better than the spec expected, though "vs." still does. An offline test also caught a validator bug: for "Fake. Catch them sleeping." it counted "Fake." as a sentence and wrongly added V3.
 - What I expected: The spec's D4 table would translate straight into code.
 - What I changed: Fixed the bug, updated SPEC.md to match the code, and kept the known V6 false positive ("Go. A punt from the 40 gains almost nothing.") as a test that documents the miss rather than hiding it.
+
+### 2026-11-07 — After the redeploy, the app loaded as a wall of red errors in my browser
+- Constraint IDs: R1, T7, A6
+- What happened: After switching the deployed app from access_check.py to app.py, the page first spun forever. Then it loaded with every input box replaced by "TypeError: Failed to fetch dynamically imported module". The same URL loaded cleanly in a fresh browser with no cache, and the app also ran fine locally.
+- What I expected: A redeploy would just show the new version.
+- What I changed: Nothing in the code; the problem was the browser, not the app. A browser that visited before a redeploy can keep old page files that point to ones that no longer exist. A hard refresh (Cmd+Shift+R) or a private window fixes it. Demo rule: no pushes on demo day, and a fresh-browser check right before the Balcony session.
+
+### 2026-11-07 — Interface pass (D6): where the UI brief ran into B1–B3
+- Constraint IDs: D6, B1, B2, B3, R1
+- What happened: Rebuilt the interface as "Go / No Go": a broadcast-style summary bar, an SVG field that redraws live, a single "Make the Call" button, a verdict card, and an "Under the Hood" panel. The UI brief asked for "verdict plus exactly one sentence" in the result. But the validator's job is to show when Gemini breaks that rule, not to hide it (B3).
+- What I expected: Styling work that wouldn't touch the constraint.
+- What I changed: The card shows the rule's verdict and Gemini's text untrimmed. A two-sentence reply shows as two sentences, with a format-check line beside it. When the API fails, no card is shown at all, rather than a verdict with no sentence. Browser testing at 360px found Streamlit's fixed toolbar covering the header and a field too flat to read on a phone; both fixed. Known gaps: Streamlit's +/- stepper buttons have no accessible names, and for goal-to-go the message to Gemini still says "4th and 4" while the UI says "4TH & GOAL".

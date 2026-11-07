@@ -1,6 +1,8 @@
-"""The Fourth Down Oracle. Run with:  streamlit run app.py
+"""Go / No Go: the Fourth Down Oracle. Run with:  streamlit run app.py
 
-Flow: form -> rule makes the call -> Gemini writes one sentence -> validator checks it -> log.
+Flow: inputs -> rule makes the call -> Gemini writes one sentence -> validator checks it -> log.
+Inputs redraw the field live; Gemini is only called when "Make the Call" is clicked.
+Presentation lives in ui.py; this file is the flow.
 """
 
 from datetime import datetime
@@ -9,16 +11,14 @@ import pandas as pd
 import streamlit as st
 
 import config
+import ui
 from oracle import ask, build_message, make_client
 from rule import decide
 from validator import validate
 
-st.set_page_config(page_title="Fourth Down Oracle", page_icon="🏈")
-st.title("The Fourth Down Oracle")
-st.caption(
-    "One word, one sentence. A fixed rule makes the call; Gemini only writes the justification; "
-    "a validator checks every reply against that contract and logs what breaks."
-)
+st.set_page_config(page_title="Go / No Go · Fourth Down Oracle", page_icon="🏈", layout="wide")
+st.markdown(ui.CSS, unsafe_allow_html=True)
+st.markdown(ui.HEADER, unsafe_allow_html=True)
 
 # With no secrets file at all, st.secrets raises instead of returning empty, so catch that too.
 try:
@@ -35,115 +35,181 @@ def get_client():
     return make_client(st.secrets["GEMINI_API_KEY"])
 
 
-# Per-session state: the run log and the request counter (T5).
-st.session_state.setdefault("log", [])
-st.session_state.setdefault("calls", 0)
-st.session_state.setdefault("last", None)
+# Per-session state: run log, request counter (T5), last result, and the in-flight flag.
+for k, v in {"log": [], "calls": 0, "last": None, "busy": False}.items():
+    st.session_state.setdefault(k, v)
 
-# ---- Input form (D1) ----
-with st.form("situation"):
-    c1, c2, c3 = st.columns(3)
-    yards_to_go = c1.number_input("Yards to go", min_value=1, max_value=30, value=1)
-    side = c2.radio("Ball on", ["Own", "Opponent"], index=1, horizontal=True)
-    yard_line = c3.number_input("Yard line", min_value=1, max_value=50, value=40)
 
-    c4, c5, c6, c7 = st.columns(4)
-    score_diff = c4.number_input("Score diff (you − them)", min_value=-28, max_value=28, value=0)
-    quarter = c5.selectbox("Quarter", [1, 2, 3, 4], index=1)
-    minutes = c6.number_input("Min left", min_value=0, max_value=15, value=8)
-    seconds = c7.number_input("Sec left", min_value=0, max_value=59, value=0)
+def request_call():
+    # Runs before the next script pass, so that pass renders everything disabled
+    # while Gemini works. This is what blocks double-clicks and mid-call edits.
+    st.session_state.busy = True
 
-    context = st.text_input(
-        "Context (optional, goes to the LLM only, not the rule)",
-        max_chars=200,
-        placeholder="e.g. blizzard, starting QB just left injured",
-    )
-    submitted = st.form_submit_button("Ask the Oracle", type="primary")
 
-# Convert the football yard line to yards from the opponent's goal (what rule.py expects).
-ball_spot = yard_line if side == "Opponent" else 100 - yard_line
-seconds_left = minutes * 60 + seconds
+busy = st.session_state.busy
+left, right = st.columns([1, 1.15], gap="large")  # stacks to one column on phones
 
-if submitted:
-    if seconds_left > 900:
-        st.error("A quarter is 15:00 at most.")
-    elif yards_to_go > ball_spot:
-        st.error(f"Can't need {yards_to_go} yards with only {ball_spot} to the goal line.")
-    elif st.session_state.calls >= config.SESSION_CALL_CAP:
-        st.warning(
-            f"This session has used its {config.SESSION_CALL_CAP} Oracle calls. The free Gemini quota is "
-            "shared by everyone using the app, so the cap keeps one person from using it all. "
-            "Download your run log below; a new browser session resets the cap."
-        )
-    else:
-        st.session_state.calls += 1
-        verdict, reason = decide(yards_to_go, ball_spot, score_diff, quarter, seconds_left)
-        message = build_message(yards_to_go, ball_spot, score_diff, quarter, seconds_left, context, verdict)
-        with st.spinner("Consulting the Oracle..."):
-            result = ask(get_client(), message)
-        check = validate(result["raw"], verdict) if not result["error"] else None
+# ---------------- Controls (D1) ----------------
+with left, st.container(key="controls"):
+    st.markdown(ui.section("Field position"), unsafe_allow_html=True)
+    side = st.radio("Ball is in", ["Own", "Opp"], index=1, horizontal=True, key="side", disabled=busy,
+                    format_func=lambda s: "Own territory" if s == "Own" else "Opponent territory")
+    c1, c2 = st.columns(2)
+    yard_line = c1.number_input("Yard line (1–50)", min_value=1, max_value=50, value=40, key="yard_line", disabled=busy)
+    # rule.py measures from the opponent's goal line: opp 40 -> 40, own 20 -> 80, 50 -> 50.
+    ball_spot = yard_line if side == "Opp" else 100 - yard_line
+    if yard_line == 50:
+        c1.markdown('<p class="gng-hint">50 is midfield; territory doesn\'t matter.</p>', unsafe_allow_html=True)
 
-        # B3: every run is logged with the raw output, including failed calls.
-        row = {
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
-            "yards_to_go": yards_to_go,
-            "ball_spot": ball_spot,
-            "score_diff": score_diff,
-            "quarter": quarter,
-            "time_left": f"{minutes}:{seconds:02d}",
-            "context": context,
-            "rule_verdict": verdict,
-            "rule_reason": reason,
-            "raw_output": result["raw"],
-            "parsed_verdict": check["parsed_verdict"] if check else "",
-            "result": ("PASS" if check["passed"] else "FAIL") if check else "ERROR",
-            "violations": ";".join(c for c, _ in check["violations"]) if check else "",
-            "violation_details": " | ".join(f"{c}: {d}" for c, d in check["violations"]) if check else "",
-            "prompt_version": config.PROMPT_VERSION,
-            "model": result["model"],
-            "fallback_reason": result["fallback_reason"],
-            "error": result["error"],
-        }
-        st.session_state.log.append(row)
-        st.session_state.last = {"row": row, "check": check}
+    yards_to_go = c2.number_input("Yards to gain", min_value=1, max_value=30, value=1, key="ytg", disabled=busy)
+    ytg_error = yards_to_go > ball_spot
+    if ytg_error:
+        c2.markdown(f'<p class="gng-fielderr">Only {ball_spot} yards to the goal line from here. '
+                    f'Use {ball_spot} for 4th &amp; Goal.</p>', unsafe_allow_html=True)
 
-# ---- Result (kept in session state so it survives reruns, e.g. the download click) ----
-last = st.session_state.last
-if last:
+    st.markdown(ui.section("Game state (used by the late-game rule)"), unsafe_allow_html=True)
+    c3, c4 = st.columns(2)
+    score_diff = c3.number_input("Score margin (you − them)", min_value=-28, max_value=28, value=0, key="score",
+                                 disabled=busy, help="Positive if you lead, negative if you trail.")
+    quarter = c4.selectbox("Quarter", [1, 2, 3, 4], index=1, key="quarter", disabled=busy)
+    c5, c6 = st.columns(2)
+    minutes = c5.number_input("Minutes left in quarter", min_value=0, max_value=15, value=8, key="minutes", disabled=busy)
+    seconds = c6.number_input("Seconds", min_value=0, max_value=59, value=0, key="seconds", disabled=busy)
+    time_error = minutes * 60 + seconds > 900
+    if time_error:
+        st.markdown('<p class="gng-fielderr">A quarter is 15:00 at most. Set seconds to 0.</p>', unsafe_allow_html=True)
+
+    st.markdown(ui.section("Optional context"), unsafe_allow_html=True)
+    context = st.text_input("Context for Gemini only (the rule ignores it)", max_chars=200, key="context",
+                            disabled=busy, placeholder="e.g. blizzard, starting QB just left injured")
+
+situation = {"yards_to_go": yards_to_go, "ball_spot": ball_spot, "score_diff": score_diff, "quarter": quarter,
+             "minutes": minutes, "seconds": seconds, "context": context}
+invalid = ytg_error or time_error
+capped = st.session_state.calls >= config.SESSION_CALL_CAP
+
+
+def run_call(s):
+    """One Oracle request: rule -> prompt -> Gemini (with backup) -> validator -> log (B2, B3)."""
+    st.session_state.calls += 1
+    secs = s["minutes"] * 60 + s["seconds"]
+    verdict, reason = decide(s["yards_to_go"], s["ball_spot"], s["score_diff"], s["quarter"], secs)
+    message = build_message(s["yards_to_go"], s["ball_spot"], s["score_diff"], s["quarter"], secs, s["context"], verdict)
+    result = ask(get_client(), message)
+    check = validate(result["raw"], verdict) if not result["error"] else None
+
+    # B3: every run is logged with the raw output, including failed calls.
+    row = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "yards_to_go": s["yards_to_go"], "ball_spot": s["ball_spot"], "score_diff": s["score_diff"],
+        "quarter": s["quarter"], "time_left": f"{s['minutes']}:{s['seconds']:02d}", "context": s["context"],
+        "rule_verdict": verdict, "rule_reason": reason, "raw_output": result["raw"],
+        "parsed_verdict": check["parsed_verdict"] if check else "",
+        "result": ("PASS" if check["passed"] else "FAIL") if check else "ERROR",
+        "violations": ";".join(c for c, _ in check["violations"]) if check else "",
+        "violation_details": " | ".join(f"{c}: {d}" for c, d in check["violations"]) if check else "",
+        "prompt_version": config.PROMPT_VERSION, "model": result["model"],
+        "fallback_reason": result["fallback_reason"], "error": result["error"],
+    }
+    st.session_state.log.append(row)
+    st.session_state.last = {"row": row, "check": check, "situation": dict(s), "message": message}
+
+
+PLAIN = {"V1": "didn't open with Go, Punt, or Kick", "V2": "named a different call than the rule",
+         "V3": "wasn't exactly one sentence", "V4": "hedged", "V5": "added text before the verdict",
+         "V6": "argued for another option"}
+
+
+def render_result(current):
+    last = st.session_state.last
+    if not last:
+        if not invalid:  # the fix-the-input message already covers the invalid case
+            st.markdown(ui.status_line("Set the situation, then make the call."), unsafe_allow_html=True)
+        return
     row, check = last["row"], last["check"]
-    st.divider()
+    stale = last["situation"] != current
+
     if row["error"]:
-        st.error(
-            f"The Oracle is unavailable right now ({row['error']}). Google's free tier is busy or out of quota; "
-            "try again in a minute. This run is still in the log."
-        )
+        # No card on failure: a verdict without its sentence would break the one-word-one-sentence contract.
+        msg = ("Gemini couldn't be reached just now (Google's free tier is busy or out of quota), "
+               "so there's no call to show. Try again in a minute.")
+        if stale:
+            msg = "The last attempt, for the previous situation, couldn't reach Gemini."
+        st.warning(msg)
+        return
+
+    st.markdown(ui.result_card(row["rule_verdict"], check["justification"],
+                               ui.summary_text(last["situation"]) if stale else None), unsafe_allow_html=True)
+    if stale:
+        st.markdown(ui.status_line("<b>Inputs changed.</b> This call was for the previous situation. "
+                                   "Make the Call again for the new one."), unsafe_allow_html=True)
+        return
+    if check["passed"]:
+        st.markdown(ui.status_line("<b>Format check:</b> passed (one verdict word, one sentence)."), unsafe_allow_html=True)
     else:
-        st.subheader("The Oracle says")
-        st.code(row["raw_output"] or "(empty reply)", language=None, wrap_lines=True)
+        problems = "; ".join(dict.fromkeys(PLAIN[c] for c, _ in check["violations"]))
+        st.markdown(ui.status_line(f"<b>Format check:</b> the reply broke the contract ({problems}). "
+                                   "The raw reply is under the hood."), unsafe_allow_html=True)
+    if row["fallback_reason"]:
+        st.markdown(ui.status_line("<b>Backup model:</b> the main model was busy, so the backup answered."),
+                    unsafe_allow_html=True)
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Rule's call", row["rule_verdict"], row["rule_reason"], delta_color="off")
-        c2.metric("Validator", "PASS" if check["passed"] else "FAIL",
-                  f"{len(check['violations'])} violation(s)", delta_color="off")
-        c3.metric("Model", row["model"].replace("gemini-", ""), f"prompt {row['prompt_version']}", delta_color="off")
 
-        for code, detail in check["violations"]:
-            st.error(f"**{code}** {detail}")
-        if row["fallback_reason"]:
-            st.info(f"Primary model unavailable ({row['fallback_reason']}); answered by the backup model.")
+# ---------------- Situation, field, action, result ----------------
+with right:
+    st.markdown(ui.section("Situation"), unsafe_allow_html=True)
+    st.markdown(ui.summary_bar(situation), unsafe_allow_html=True)
+    st.markdown(ui.field_svg(ball_spot, min(yards_to_go, ball_spot)), unsafe_allow_html=True)
 
-# ---- Run log (Section 6) ----
+    st.button("Make the Call", key="make_call", type="primary", width="stretch",
+              on_click=request_call, disabled=busy or invalid or capped)
+    if invalid:
+        st.markdown(ui.status_line("Fix the input marked in red to make the call."), unsafe_allow_html=True)
+    if capped:
+        st.markdown(ui.status_line(
+            f"This session has used its {config.SESSION_CALL_CAP} calls. The free Gemini quota is shared by "
+            "everyone using the app. Download your results below; a new browser session resets the cap."),
+            unsafe_allow_html=True)
+
+    if busy:
+        # Clear the flag before calling, so an interrupted run can't fire a second request.
+        st.session_state.busy = False
+        if not invalid and not capped:
+            with st.spinner("Making the call…"):
+                run_call(situation)
+        st.rerun()
+
+    render_result(situation)
+
+# ---------------- Secondary information ----------------
+st.divider()
+last = st.session_state.last
+with st.expander("Under the Hood"):
+    if not last:
+        st.caption("Make a call to see the rule's reasoning, the raw Gemini reply, and the format check.")
+    else:
+        row, check = last["row"], last["check"]
+        st.markdown(f"**Rule's call:** {row['rule_verdict']} ({row['rule_reason']}). "
+                    "The rule makes the call; Gemini only explains it.")
+        st.markdown("**Situation sent to Gemini**")
+        st.code(last["message"], language=None, wrap_lines=True)
+        if row["error"]:
+            st.markdown(f"**Request failed:** {row['error']}"
+                        + (f" (after main model: {row['fallback_reason']})" if row["fallback_reason"] else ""))
+        else:
+            st.markdown("**Raw reply** (exactly as returned, never edited)")
+            st.code(row["raw_output"] or "(empty)", language=None, wrap_lines=True)
+            st.markdown("**Format check:** " + ("PASS" if check["passed"] else "FAIL"))
+            for code, detail in check["violations"]:
+                st.markdown(f"- **{code}** {detail}")
+        st.markdown(f"**Model:** `{row['model']}` · **Prompt:** {row['prompt_version']}"
+                    + (f" · **Backup used:** {row['fallback_reason']}" if row["fallback_reason"] else ""))
+
 if st.session_state.log:
-    st.divider()
     df = pd.DataFrame(st.session_state.log)
-    passed = (df["result"] == "PASS").sum()
-    st.subheader(f"Run log: {len(df)} runs, {passed} passed")
-    st.dataframe(df, width="stretch")
-    st.download_button(
-        "Download run log (CSV)",
-        df.to_csv(index=False).encode("utf-8"),
-        file_name=f"oracle_runs_{datetime.now():%Y%m%d_%H%M}.csv",
-        mime="text/csv",
-    )
+    st.download_button("Download session results (CSV)", df.to_csv(index=False).encode("utf-8"), key="download",
+                       file_name=f"oracle_runs_{datetime.now():%Y%m%d_%H%M}.csv", mime="text/csv")
+    with st.expander(f"Session log: {len(df)} run{'s' if len(df) != 1 else ''}, {(df['result'] == 'PASS').sum()} passed"):
+        st.dataframe(df, width="stretch")
     st.caption(f"Calls this session: {st.session_state.calls} of {config.SESSION_CALL_CAP}. "
-               "The log lives in this browser session; download it before closing the tab.")
+               "Results live in this browser tab only; download them before closing it.")
