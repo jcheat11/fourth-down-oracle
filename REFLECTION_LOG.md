@@ -41,3 +41,9 @@ Entries are tagged with constraint IDs from `CLAUDE.md`. Format:
 - What happened: `gemini-3.8-flash`, the model Google's own 404 message recommended, returned 503 UNAVAILABLE: "currently experiencing high demand... try again later."
 - What I expected: The rate-limit risk in T5 was a 429 from our shared free-tier quota. This is a different failure: Google's servers are busy, regardless of our usage.
 - What I changed: The app's error handling has to cover 503 as well as 429. Open question for Phase 3: on a 503, retry the same model, or fall back to a second pinned model? A fallback must be logged per run, so the run log shows which model actually answered.
+
+### 2026-11-07 — Model sweep: 6 of 18 answered, and the replies already test B1
+- Constraint IDs: T4, T5, B1, D3, D4 (V6)
+- What happened: With a 20s timeout per model, these answered OK: gemini-3-flash-preview, 3.1-flash-lite, 3.1-flash-lite-preview, 3.5-flash, 3.5-flash-lite, 3.6-flash. Failures: 404 (2.5 family retired), 429 (image models, quota), 400 (a tts model), 504 timeout (3.7-flash). The newest models (3.7, 3.8) were the overloaded ones. Even with the same prompt, the reply format varied: most said "Go. <sentence>", but 3.5-flash-lite said "Go because converting...", with no punctuation after the verdict. 3-flash-preview's "Go" reply begins "A punt from the opponent's..." Under V6 keywords, the word "punt" in a Go justification counts as a contradiction, even though the sentence is arguing against punting.
+- What I expected: Format differences would show up in Phase 5, not in the access test.
+- What I changed: Nothing yet. "Go because..." passes D3 as written, since punctuation after the verdict is optional. The "punt" case is a preview of a V6 false positive: a keyword check can't tell "punt" (recommending it) from "a punt here gains little" (rejecting it). Keep the heuristic and log its misfires, per the spec.
