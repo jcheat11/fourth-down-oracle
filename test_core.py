@@ -31,8 +31,23 @@ assert codes("Verdict: Go. It is the right call.", "Go") == ["V1", "V5"]
 assert codes("Fake. Catch them sleeping.", "Punt") == ["V1"]
 assert codes("Punt. Field position matters most here.", "Go") == ["V2"]
 assert codes("", "Go") == ["V1", "V3"]
-# Known V6 false positive, seen in the access-check sweep: arguing AGAINST a punt still says "punt".
+# ---- V6 v2: negation-aware keyword check ----
+# Real reply (live run, gemini-3.5-flash, prompt v1): flagged by v1, correctly passes in v2.
+KICK_REAL = ("Kick A successful 53-yard field goal gives the team the lead with only one minute remaining "
+             "in a tied game while avoiding the low probability of converting a 4th and 10.")
+assert codes(KICK_REAL, "Kick") == []
+assert validate(KICK_REAL, "Kick")["notes"] == ["ignored 'converting' (Go): follows 'avoiding'"]
+assert codes("Go. Rather than punt, keep the offense on the field.", "Go") == []      # cue before the comma
+assert codes("Punt. Don't go for it from your own 30.", "Punt") == []                  # n't counts
+assert codes("Kick. You should go for it here.", "Kick") == ["V6"]                     # real contradiction still caught
+assert codes("Kick. Not now, go for it.", "Kick") == ["V6"]                            # comma ends the clause
+# Known v2 misses, kept as tests so the writeup can cite them:
+# false positive: rejects a punt without a negating word (seen in the access-check sweep)
 assert codes("Go. A punt from the opponent's 40 gains almost nothing.", "Go") == ["V6"]
+# false positive: the negation comes AFTER the keyword, and v2 only looks back
+assert codes("Go. Settling for a field goal is not enough here.", "Go") == ["V6"]
+# false negative: "over" excuses a sentence that really argues for the kick
+assert codes("Punt. Kicking it over punting gives three points.", "Punt") == []
 
 # ---- oracle.build_message ----
 msg = build_message(4, 90, -7, 4, 95, "  blizzard ", "Go")

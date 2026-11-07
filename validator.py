@@ -4,9 +4,16 @@ It reports violations and never rewrites the reply. Codes match SPEC.md:
   V1 first word isn't Go/Punt/Kick     V4 hedge words
   V2 verdict differs from the rule      V5 text before the verdict
   V3 not exactly one sentence           V6 justification argues for another option
+
+Version history (logged on every run so results can be compared):
+  v1  V6 flags any mention of another option's keywords.
+  v2  V6 ignores a mention when a negating word ("avoid", "than", "not", ...) comes
+      shortly before it in the same clause. Added after two live false positives.
 """
 
 import re
+
+VALIDATOR_VERSION = "v2"
 
 VERDICTS = {"go": "Go", "punt": "Punt", "kick": "Kick"}
 HEDGE_RE = re.compile(r"\b(probably|maybe|might|perhaps|likely|arguably|depends)\b", re.IGNORECASE)
@@ -20,10 +27,29 @@ ARGUES_FOR = {
     "Punt": ["punt", "pin them", "flip the field"],
 }
 
+# v2: a keyword mention doesn't count when one of these words appears in the
+# NEGATION_WINDOW words before it, within the same clause (commas etc. end a clause).
+# Window is 6 because a real reply had "avoiding the low probability of converting":
+# the cue sits 5 words back. Wider would start excusing genuine contradictions.
+NEGATION_CUES = {"not", "no", "never", "instead", "than", "rather", "over", "without", "against",
+                 "avoid", "avoids", "avoiding", "skip", "skipping", "forgo", "forgoing"}
+NEGATION_WINDOW = 6
+CLAUSE_BREAK_RE = re.compile(r"[,;:\u2014\u2013()]")
+TOKEN_RE = re.compile(r"[a-z]+(?:['\u2019]t)?")  # keeps "don't" / "can't" as one token
+
 WORD_RE = re.compile(r"[A-Za-z]+")
 # A sentence ends at . ! or ? followed by whitespace or end of text,
 # so decimals like "3.5" don't count as sentence breaks.
 SENTENCE_END_RE = re.compile(r"[.!?]+(?=\s|$)")
+
+
+def negation_before(lower, start):
+    """Return the negating word shortly before position `start` in its clause, or None."""
+    clause = CLAUSE_BREAK_RE.split(lower[:start])[-1]
+    for tok in reversed(TOKEN_RE.findall(clause)[-NEGATION_WINDOW:]):
+        if tok in NEGATION_CUES or tok.endswith(("n't", "n\u2019t")):
+            return tok
+    return None
 
 
 def count_sentences(text):
@@ -32,10 +58,13 @@ def count_sentences(text):
 
 
 def validate(raw, rule_verdict):
-    """Return dict: parsed_verdict, justification, violations [(code, detail)], passed."""
+    """Return dict: parsed_verdict, justification, violations [(code, detail)], notes, passed.
+
+    notes lists V6 mentions that were ignored because they were negated, so the
+    decision is visible instead of silent (B3)."""
     text = (raw or "").strip()
     words = list(WORD_RE.finditer(text))
-    violations = []
+    violations, notes = [], []
     verdict, rest = None, text
 
     first = words[0] if words else None
@@ -77,12 +106,18 @@ def validate(raw, rule_verdict):
         if option == rule_verdict:
             continue
         for p in phrases:
-            if re.search(r"\b" + re.escape(p), lower):
-                violations.append(("V6", f"rule said {rule_verdict}, text says '{p}' ({option})"))
+            for m in re.finditer(r"\b" + re.escape(p) + r"\w*", lower):
+                cue = negation_before(lower, m.start())
+                if cue:
+                    notes.append(f"ignored '{m.group()}' ({option}): follows '{cue}'")
+                else:
+                    violations.append(("V6", f"rule said {rule_verdict}, text says '{m.group()}' ({option})"))
+                    break  # one flag per phrase is enough
 
     return {
         "parsed_verdict": verdict or "",
         "justification": justification,
         "violations": violations,
+        "notes": notes,
         "passed": not violations,
     }

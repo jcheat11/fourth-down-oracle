@@ -242,8 +242,9 @@ def status_line(text):
     return f'<p class="gng-status">{text}</p>'
 
 
-def format_check(violations, plain, stale_summary=None):
-    """Validator panel: PASS or BROKEN, then each violation in plain words with its code and detail."""
+def format_check(violations, plain, stale_summary=None, notes=(), version=""):
+    """Validator panel: PASS or BROKEN, each violation in plain words with its code and detail,
+    and any keyword mentions the checker deliberately ignored (so that call is visible too)."""
     ok = not violations
     head = ("One verdict word, one sentence, no hedging." if ok
             else f"{len(violations)} problem{'s' if len(violations) != 1 else ''} with the reply.")
@@ -252,8 +253,10 @@ def format_check(violations, plain, stale_summary=None):
         for c, d in violations)
     stale = (f'<div class="gng-sub">For the previous situation: {html.escape(stale_summary)}</div>'
              if stale_summary else "")
+    ignored = "".join(f'<div class="gng-sub">Keyword check {html.escape(x)}, so not flagged.</div>' for x in notes)
     return (f'<div class="gng-check {"ok" if ok else "bad"}" role="status">'
             f'<span class="gng-badge">{"PASS" if ok else "BROKEN"}</span>{head}'
             f'{"<ul>" + items + "</ul>" if items else ""}'
-            '<div class="gng-sub">The raw reply is under the hood.</div>'
+            f'{ignored}'
+            f'<div class="gng-sub">Checker {html.escape(version)}. The raw reply is under the hood.</div>'
             f"{stale}</div>")

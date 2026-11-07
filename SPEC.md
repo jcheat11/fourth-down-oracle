@@ -57,11 +57,11 @@ It's crude on purpose. The rule's job is to give the LLM a call it might disagre
 | V3 | Not exactly one sentence | Sentence-terminator count in justification ≠ 1 (see D3) |
 | V4 | Hedge words | Case-insensitive word match: probably, maybe, might, perhaps, likely, arguably, depends |
 | V5 | Preamble | Any text before the verdict word (e.g., "Verdict:", "The Oracle says") |
-| V6 | Justification argues for another option | Keyword heuristic: verdict Punt/Kick but text says "go for it" / "convert" / "keep the offense on the field"; verdict Go/Punt but text says "field goal" / "kick it" / "three points"; verdict Go/Kick but text says "punt" / "pin them" / "flip the field" |
+| V6 | Justification argues for another option | Keyword heuristic: verdict Punt/Kick but text says "go for it" / "convert" / "keep the offense on the field"; verdict Go/Punt but text says "field goal" / "kick it" / "three points"; verdict Go/Kick but text says "punt" / "pin them" / "flip the field". **v2 (2026-11-07):** a mention is ignored when a negating word (not, no, never, instead, than, rather, over, without, against, avoid*, skip*, forgo*, or any n't word) appears within the 6 words before it in the same clause; ignored mentions are shown and logged |
 
 A run passes only with zero violations. Several violations can fire on one run; all are logged. A preamble ("Verdict: Go.") fires both V1 and V5, since the first word is wrong and there is text before the verdict. V6 is judged against the rule's call, because that is what the LLM was told to justify.
 
-V6 is a keyword heuristic, not an LLM judge. A second judge call would double free-tier usage (T5). Its false positives and misses are expected and are material for the reflection log.
+V6 is a keyword heuristic, not an LLM judge. Every run logs `validator_version` (v1 or v2) and any mentions v2 ignored (`v6_ignored`). Known v2 misses, kept as tests: rejecting an option without a negating word ("a punt gains almost nothing"), negation after the keyword ("a field goal is not enough"), and "over" excusing a real contradiction. A second judge call would double free-tier usage (T5). Its false positives and misses are expected and are material for the reflection log.
 
 ## D5 — Edge verdicts
 

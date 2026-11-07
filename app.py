@@ -14,7 +14,7 @@ import config
 import ui
 from oracle import ask, build_message, make_client
 from rule import decide
-from validator import validate
+from validator import VALIDATOR_VERSION, validate
 
 st.set_page_config(page_title="Go / No Go · Fourth Down Oracle", page_icon="🏈", layout="wide")
 st.markdown(ui.CSS, unsafe_allow_html=True)
@@ -108,7 +108,8 @@ def run_call(s):
         "result": ("PASS" if check["passed"] else "FAIL") if check else "ERROR",
         "violations": ";".join(c for c, _ in check["violations"]) if check else "",
         "violation_details": " | ".join(f"{c}: {d}" for c, d in check["violations"]) if check else "",
-        "prompt_version": config.PROMPT_VERSION, "model": result["model"],
+        "v6_ignored": " | ".join(check["notes"]) if check else "",
+        "prompt_version": config.PROMPT_VERSION, "validator_version": VALIDATOR_VERSION, "model": result["model"],
         "fallback_reason": result["fallback_reason"], "error": result["error"],
     }
     st.session_state.log.append(row)
@@ -117,7 +118,7 @@ def run_call(s):
 
 PLAIN = {"V1": "didn't open with Go, Punt, or Kick", "V2": "named a different call than the rule",
          "V3": "wasn't exactly one sentence", "V4": "hedged", "V5": "added text before the verdict",
-         "V6": "argued for another option"}
+         "V6": "may argue for another option (keyword check)"}
 
 
 def render_result(current):
@@ -188,7 +189,8 @@ elif last["row"]["error"]:
     st.caption("Nothing to check: the last request didn't get a reply.")
 else:
     stale_label = ui.summary_text(last["situation"]) if last["situation"] != situation else None
-    st.markdown(ui.format_check(last["check"]["violations"], PLAIN, stale_label), unsafe_allow_html=True)
+    st.markdown(ui.format_check(last["check"]["violations"], PLAIN, stale_label, last["check"].get("notes", []),
+                                last["row"].get("validator_version", "")), unsafe_allow_html=True)
 
 with st.expander("Under the Hood"):
     if not last:
