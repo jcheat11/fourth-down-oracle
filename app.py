@@ -20,8 +20,13 @@ st.caption(
     "a validator checks every reply against that contract and logs what breaks."
 )
 
-if "GEMINI_API_KEY" not in st.secrets:
-    st.error("No GEMINI_API_KEY configured in secrets.")
+# With no secrets file at all, st.secrets raises instead of returning empty, so catch that too.
+try:
+    has_key = "GEMINI_API_KEY" in st.secrets
+except Exception:
+    has_key = False
+if not has_key:
+    st.error("No GEMINI_API_KEY configured. Add it in the app's Settings → Secrets on Streamlit Cloud.")
     st.stop()
 
 
