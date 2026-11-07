@@ -70,3 +70,14 @@ Strictly Go / Punt / Kick. "Fake" or "Two-point" in the verdict position is a V1
 ## D6 — Interface
 
 Deferred. Time-boxed to whatever budget remains after Phase 4 (ugly deploy).
+
+---
+
+## Model (T4, T5)
+
+Decided by Josh on 2026-11-07, after the access-check sweep.
+
+- **Primary:** `gemini-3.5-flash`. A stable release, clean format in the sweep, one step behind the newest (overloaded) models.
+- **Backup:** `gemini-3.5-flash-lite`. Used only when the primary returns 503, 429, or times out. It runs on separate capacity, and quotas are per model.
+- Each run logs which model actually answered. A run answered by the backup counts as a normal run, not a violation, but it's visible in the run log.
+- No `-latest` aliases and no preview models.

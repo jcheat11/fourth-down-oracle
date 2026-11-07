@@ -47,3 +47,9 @@ Entries are tagged with constraint IDs from `CLAUDE.md`. Format:
 - What happened: With a 20s timeout per model, these answered OK: gemini-3-flash-preview, 3.1-flash-lite, 3.1-flash-lite-preview, 3.5-flash, 3.5-flash-lite, 3.6-flash. Failures: 404 (2.5 family retired), 429 (image models, quota), 400 (a tts model), 504 timeout (3.7-flash). The newest models (3.7, 3.8) were the overloaded ones. Even with the same prompt, the reply format varied: most said "Go. <sentence>", but 3.5-flash-lite said "Go because converting...", with no punctuation after the verdict. 3-flash-preview's "Go" reply begins "A punt from the opponent's..." Under V6 keywords, the word "punt" in a Go justification counts as a contradiction, even though the sentence is arguing against punting.
 - What I expected: Format differences would show up in Phase 5, not in the access test.
 - What I changed: Nothing yet. "Go because..." passes D3 as written, since punctuation after the verdict is optional. The "punt" case is a preview of a V6 false positive: a keyword check can't tell "punt" (recommending it) from "a punt here gains little" (rejecting it). Keep the heuristic and log its misfires, per the spec.
+
+### 2026-11-07 — Pinned gemini-3.5-flash with a 3.5-flash-lite backup
+- Constraint IDs: T4, T5
+- What happened: Chose `gemini-3.5-flash` as the primary and `gemini-3.5-flash-lite` as the backup, out of the six models that passed the sweep.
+- What I expected: To pin a single model. The 503/504 results on the newest models made a single point of failure look risky for a live demo where all viewers share one quota.
+- What I changed: Added a backup, logged per run. Tradeoff accepted: B1 compliance may differ between the two models (3.5-flash-lite already showed a "Go because..." format variation), so validator results should be read per model.
